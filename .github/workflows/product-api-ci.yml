@@ -54,7 +54,24 @@ jobs:
       - name: Verify setuptools in built image
         run: |
           docker run --rm clixx-product-api:${{ github.sha }} \
-            python -m pip show setuptools
+            python -m pip show 
+      
+      - name: Investigate setuptools vulnerability
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          image-ref: clixx-product-api:${{ github.sha }}
+          format: json
+          output: trivy-investigation.json
+          severity: HIGH,CRITICAL
+          vuln-type: os,library
+          ignore-unfixed: true
+          exit-code: '0'
+
+      - name: Upload investigation report
+        uses: actions/upload-artifact@v4
+        with:
+          name: trivy-investigation
+          path: trivy-investigation.json
 
       - name: Scan image with Trivy
         uses: aquasecurity/trivy-action@v0.36.0
