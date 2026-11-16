@@ -7,15 +7,18 @@ RUN apt-get update \
     && apt-get upgrade -y \
     && rm -rf /var/lib/apt/lists/*
 
-# Install production dependencies only
+# Copy production dependencies
 COPY requirements.txt .
 
-RUN python -m pip install --no-cache-dir --upgrade pip \
+# Upgrade packaging tools and install production dependencies
+RUN python -m pip install --no-cache-dir --upgrade \
+      pip "setuptools>=78.1.1" \
     && python -m pip install --no-cache-dir -r requirements.txt
 
+# Copy application source
 COPY app/ ./app/
 
-# Run application without root privileges
+# Run as a non-root user
 RUN useradd --create-home appuser
 USER appuser
 
