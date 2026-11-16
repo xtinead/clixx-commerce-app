@@ -62,6 +62,20 @@ jobs:
           docker run --rm clixx-product-api:${{ github.sha }} \
             sh -c 'find /usr/local/lib /usr/lib -iname "*setuptools*" 2>/dev/null'
       
+      - name: Generate image SBOM
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          image-ref: clixx-product-api:${{ github.sha }}
+          format: cyclonedx
+          output: trivy-sbom.json
+          exit-code: '0'
+
+      - name: Upload image SBOM
+        uses: actions/upload-artifact@v4
+        with:
+          name: trivy-sbom
+          path: trivy-sbom.json
+      
       - name: Investigate setuptools vulnerability
         uses: aquasecurity/trivy-action@v0.36.0
         with:
