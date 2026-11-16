@@ -1,3 +1,4 @@
+
 name: Product API CI
 
 on:
@@ -41,6 +42,9 @@ jobs:
     runs-on: ubuntu-latest
     needs: test
 
+    env:
+      IMAGE_NAME: clixx-product-api:${{ github.sha }}
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -48,24 +52,61 @@ jobs:
       - name: Build Docker image
         run: |
           docker build --pull --no-cache \
-            -t clixx-product-api:${{ github.sha }} \
+            -t "$IMAGE_NAME" \
             services/product-api
 
-      - name: Inspect setuptools in built image
+      - name: Verify runtime image is hardened
         run: |
-          docker run --rm clixx-product-api:${{ github.sha }} \
-            python -m pip show setuptools
+          docker run --rm "$IMAGE_NAME" python -c '
+          import importlib.util
+          import sys
 
-          docker run --rm clixx-product-api:${{ github.sha }} \
-            python -c "import importlib.metadata as m; print([(d.metadata['Name'], d.version, str(d._path)) for d in m.distributions() if d.metadata['Name'].lower() == 'setuptools'])"
+          packages = ["pip", "setuptools", "wheel"]
+          found = [
+              package for package in packages
+              if importlib.util.find_spec(package) is not None
+          ]
 
-          docker run --rm clixx-product-api:${{ github.sha }} \
-            sh -c 'find /usr/local/lib /usr/lib -iname "*setuptools*" 2>/dev/null'
-      
+          if found:
+              print("FAIL: Unexpected runtime packaging tools:", found)
+              sys.exit(1)
+
+          print("PASS: Runtime packaging tools are absent")
+          '
+
+      - name: Verify application endpoints
+        run: |
+          docker run -d \
+            --name product-api-ci \
+            -p 127.0.0.1:8003:8000 \
+            "$IMAGE_NAME"
+
+          for attempt in $(seq 1 20); do
+            if curl --fail --silent \
+              http://127.0.0.1:8003/health/live; then
+              break
+            fi
+
+            if [ "$attempt" -eq 20 ]; then
+              docker logs product-api-ci
+              exit 1
+            fi
+
+            sleep 2
+          done
+
+          curl --fail --silent --show-error \
+            http://127.0.0.1:8003/products
+
+      - name: Stop test container
+        if: always()
+        run: |
+          docker rm -f product-api-ci || true
+
       - name: Generate image SBOM
         uses: aquasecurity/trivy-action@v0.36.0
         with:
-          image-ref: clixx-product-api:${{ github.sha }}
+          image-ref: ${{ env.IMAGE_NAME }}
           format: cyclonedx
           output: trivy-sbom.json
           exit-code: '0'
@@ -75,11 +116,12 @@ jobs:
         with:
           name: trivy-sbom
           path: trivy-sbom.json
-      
-      - name: Investigate setuptools vulnerability
+          if-no-files-found: error
+
+      - name: Generate vulnerability investigation report
         uses: aquasecurity/trivy-action@v0.36.0
         with:
-          image-ref: clixx-product-api:${{ github.sha }}
+          image-ref: ${{ env.IMAGE_NAME }}
           format: json
           output: trivy-investigation.json
           severity: HIGH,CRITICAL
@@ -92,11 +134,12 @@ jobs:
         with:
           name: trivy-investigation
           path: trivy-investigation.json
+          if-no-files-found: error
 
       - name: Scan image with Trivy
         uses: aquasecurity/trivy-action@v0.36.0
         with:
-          image-ref: clixx-product-api:${{ github.sha }}
+          image-ref: ${{ env.IMAGE_NAME }}
           format: table
           severity: HIGH,CRITICAL
           vuln-type: os,library
