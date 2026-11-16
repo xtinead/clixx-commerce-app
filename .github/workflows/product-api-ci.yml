@@ -51,10 +51,16 @@ jobs:
             -t clixx-product-api:${{ github.sha }} \
             services/product-api
 
-      - name: Verify setuptools in built image
+      - name: Inspect setuptools in built image
         run: |
           docker run --rm clixx-product-api:${{ github.sha }} \
             python -m pip show setuptools
+
+          docker run --rm clixx-product-api:${{ github.sha }} \
+            python -c "import importlib.metadata as m; print([(d.metadata['Name'], d.version, str(d._path)) for d in m.distributions() if d.metadata['Name'].lower() == 'setuptools'])"
+
+          docker run --rm clixx-product-api:${{ github.sha }} \
+            sh -c 'find /usr/local/lib /usr/lib -iname "*setuptools*" 2>/dev/null'
       
       - name: Investigate setuptools vulnerability
         uses: aquasecurity/trivy-action@v0.36.0
