@@ -12,3 +12,9 @@ coverage/
 *.tfstate.*
 *.pem
 *.key
+
+# Local container image archives
+*.tar
+
+# Local Trivy investigation output
+trivy-secure-details.json
